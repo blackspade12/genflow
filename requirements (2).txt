@@ -1,0 +1,9 @@
+Flask
+Flask-Cors
+pandas
+matplotlib
+numpy
+scipy
+biopython
+torch
+gunicorn
