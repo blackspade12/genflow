@@ -4,7 +4,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from io import BytesIO
 from Bio import SeqIO
-from scipy.stats import norm
 import torch
 import torch.nn as nn
 
@@ -35,56 +34,35 @@ def home():
     return jsonify({
         "message": "Welcome to GeneFlow Predictor™ API",
         "endpoints": {
-            "/api/uploadGenomicData": "POST - Upload and preprocess genetic data",
-            "/api/uploadEnvData": "POST - Upload and preprocess environmental data",
-            "/api/runSimulation": "POST - Simulate gene flow and predict outcomes",
-            "/api/generateHeatmap": "POST - Generate a trait distribution heatmap"
+            "/api/process": "POST - Upload files, run simulation, and generate heatmap"
         }
     })
 
-# Upload genomic data
-@bp.route('/api/uploadGenomicData', methods=['POST'])
-def upload_genomic_data():
-    file = request.files.get('genetic_data.fasta')
-    if not file:
-        return jsonify({"error": "No file uploaded"}), 400
+# Unified endpoint for uploading files, running simulation, and generating heatmap
+@bp.route('/api/process', methods=['POST'])
+def process_data():
+    genetic_file = request.files.get('genetic_data.fasta')
+    environmental_file = request.files.get('environmental_data.csv')
+
+    if not genetic_file or not environmental_file:
+        return jsonify({"error": "Both genetic_data.fasta and environmental_data.csv files are required"}), 400
 
     try:
-        sequences = list(SeqIO.parse(file, "fasta"))
+        # Process genetic data
+        genetic_file.stream.seek(0)
+        genetic_data = genetic_file.read().decode('utf-8')
+        sequences = list(SeqIO.parse(BytesIO(genetic_data.encode('utf-8')), "fasta"))
         sequence_lengths = [len(seq.seq) for seq in sequences]
         avg_length = np.mean(sequence_lengths)
-        return jsonify({
-            "message": "Genomic data processed successfully",
-            "num_sequences": len(sequences),
-            "avg_sequence_length": avg_length
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
-# Upload environmental data
-@bp.route('/api/uploadEnvData', methods=['POST'])
-def upload_env_data():
-    file = request.files.get('environmental_data.csv')
-    if not file:
-        return jsonify({"error": "No file uploaded"}), 400
+        # Process environmental data
+        environmental_data = pd.read_csv(environmental_file)
+        summary = environmental_data.describe().to_dict()
 
-    try:
-        data = pd.read_csv(file)
-        summary = data.describe().to_dict()
-        return jsonify({"message": "Environmental data processed successfully", "summary": summary})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-# Simulate gene flow
-@bp.route('/api/runSimulation', methods=['POST'])
-def run_simulation():
-    payload = request.json
-    mutation_rate = payload.get('mutation_rate', 0.01)
-    migration_rate = payload.get('migration_rate', 0.05)
-    selection_pressure = payload.get('selection_pressure', 1.0)
-
-    try:
-        # Simulated population genetics model
+        # Run simulation
+        mutation_rate = 0.01
+        migration_rate = 0.05
+        selection_pressure = 1.0
         generations = 100
         gene_frequencies = np.zeros(generations)
         gene_frequencies[0] = 0.5  # Initial frequency
@@ -95,19 +73,8 @@ def run_simulation():
                 migration_rate * (1 - gene_frequencies[t-1]) +
                 selection_pressure * gene_frequencies[t-1] * (1 - gene_frequencies[t-1])
             )
-        
-        return jsonify({
-            "message": "Simulation completed successfully",
-            "gene_frequencies": gene_frequencies.tolist()
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
-# Generate heatmap
-@bp.route('/api/generateHeatmap', methods=['POST'])
-def generate_heatmap():
-    try:
-        # Generate random heatmap data
+        # Generate heatmap
         data = np.random.rand(10, 10)
         plt.figure(figsize=(8, 6))
         plt.imshow(data, cmap='hot', interpolation='nearest')
@@ -120,6 +87,17 @@ def generate_heatmap():
         plt.close()
         img_buffer.seek(0)
 
-        return send_file(img_buffer, mimetype='image/png')
+        response = {
+            "message": "Processing completed successfully",
+            "genetic_data": {
+                "num_sequences": len(sequences),
+                "avg_sequence_length": avg_length
+            },
+            "environmental_data_summary": summary,
+            "gene_frequencies": gene_frequencies.tolist(),
+        }
+
+        return send_file(img_buffer, mimetype='image/png', as_attachment=True, attachment_filename='heatmap.png'), 200, response
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
