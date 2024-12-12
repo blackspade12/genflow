@@ -49,9 +49,7 @@ def process_data():
 
     try:
         # Process genetic data
-        genetic_file.stream.seek(0)
-        genetic_data = genetic_file.read().decode('utf-8')
-        sequences = list(SeqIO.parse(BytesIO(genetic_data.encode('utf-8')), "fasta"))
+        sequences = list(SeqIO.parse(genetic_file.stream, "fasta"))
         sequence_lengths = [len(seq.seq) for seq in sequences]
         avg_length = np.mean(sequence_lengths)
 
